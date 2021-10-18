@@ -50,11 +50,10 @@ let ED(AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce 
     let SnwkSIntKey = KgenSenc((two,JoinNonce, JoinEUI, DevNonce), NwkKey) in
     let AppsKey  = KgenSenc((tre,JoinNonce, JoinEUI, DevNonce), NwkKey) in
     let NwkSEncKey  = KgenSenc((four,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    new m : bitstring;
-    new FCntUp : coins; (* incrementing nonce *)
+    !(new FCntUp : coins; (* incrementing nonce *)
     let outCipher = internal_senc(m,NwkSEncKey,FCntUp) in (* using probabilistic encryption *)
     let tag3 = mac( (DevAddr, FCntUp, m),NwkSEncKey) in
-    out(c,(outCipher,tag3, FCntUp)).(*also sending nonce along *)
+    out(c,(outCipher,tag3, FCntUp))).(*also sending nonce along *)
 
 
 
@@ -75,9 +74,9 @@ let JS(AppKey :key, NwkKey :key,DevEUI :bitstring, JoinEUI :bitstring, DevAddr :
     let NwkSEncKey  = KgenSenc((four,JoinNonce, JoinEUI, DevNonce), NwkKey) in
     let tag2 : bitstring = mac((JoinNonce,Home_NetID, DevAddr), NwkKey) in
     out(c,senc((JoinNonce, Home_NetID, DevAddr, tag2),NwkKey)); (*using deterministic senc function, maybe wrong *)
-    in(c,(cipher : bitstring,tag3 : bitstring, FCntUp: bitstring));
+    !(in(c,(cipher : bitstring,tag3 : bitstring, FCntUp: bitstring));
     let plaintext2 = sdecProb(cipher,NwkSEncKey) in
-    let (=tag3) = mac((DevAddr, FCntUp, plaintext2), NwkSEncKey).
+    let (=tag3) = mac((DevAddr, FCntUp, plaintext2), NwkSEncKey)).
 
 
 process
