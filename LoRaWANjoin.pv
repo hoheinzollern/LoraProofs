@@ -17,7 +17,7 @@ reduc forall m:bitstring , k:key , r:coins;
    sdecProb(internal_senc(m,k,r),k) = m.
 
 letfun sencDET(x:bitstring,y:key) = new r: coins; internal_senc(x,y,r).
-(* Deterministic symmetric encryption, not sure which one to use, going with this one right now *)
+(* Deterministic symmetric encryption *)
 
 fun senc(bitstring, key): bitstring.
 
@@ -30,52 +30,52 @@ fun KgenSenc(bitstring, key): key.
 free m:bitstring [private].
 
 query attacker(m).
+
 (*integrity query *)
 
 event JSrcv(bitstring).
 event EDsend(bitstring).
 query message : bitstring;
-      event (JSrcv(message)) ==> event (EDsend(message)).
+      inj-event (JSrcv(message)) ==> inj-event (EDsend(message)).
 
 let ED(AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) =
+    (* 1. Make handshake *)
     let tag1 = mac((JoinEUI , DevEUI , DevNonce), NwkKey) in
     out(c, (JoinEUI,DevEUI,DevNonce, tag1));
     in(c, ciphetext: bitstring);
+
     let (JoinNonce: bitstring, Home_NetID : bitstring,DevAddr: bitstring, tag2 :bitstring) = sdec(ciphetext, NwkKey) in
-    new one :bitstring; (* I can't figure out how to inline these three variables in below statements *)
-    new two :bitstring;
-    new tre :bitstring;
-    new four: bitstring;
-    let FNwkSIntKey = KgenSenc((one,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let SnwkSIntKey = KgenSenc((two,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let AppsKey  = KgenSenc((tre,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let NwkSEncKey  = KgenSenc((four,JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    (* handshake done, now generate keys *)
+    let FNwkSIntKey = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let SnwkSIntKey = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let AppsKey  = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let NwkSEncKey  = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    (* send messages *)
     !(new FCntUp : coins; (* incrementing nonce *)
-    let outCipher = internal_senc(m,NwkSEncKey,FCntUp) in (* using probabilistic encryption *)
+    let outCipher = senc((m,FCntUp),NwkSEncKey) in 
     let tag3 = mac( (DevAddr, FCntUp, m),NwkSEncKey) in
-    out(c,(outCipher,tag3, FCntUp))).(*also sending nonce along *)
+    out(c,(outCipher,tag3))).(*also sending nonce along *)
 
 
 
 let JS(AppKey :key, NwkKey :key,DevEUI :bitstring, JoinEUI :bitstring, DevAddr : bitstring) =
+    (* 1. Make handshake *)
     in(c,x: bitstring);
     let(=JoinEUI, =DevEUI, DevNonce : bitstring, tag: bitstring) = x in
     let (=JoinEUI, =DevEUI,=DevNonce) = mac(tag, NwkKey) in
     new JoinNonce : bitstring; (*A incrementing counter-nonce, perhaps another construction should be used for this *)
     new Home_NetID : bitstring;
-    new one :bitstring; (* I can't figure out how to inline these three variables in below statements *)
-    new two :bitstring;
-    new tre :bitstring;
-    new four: bitstring;
-
-    let FNwkSIntKey = KgenSenc((one,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let SnwkSIntKey = KgenSenc((two,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let AppsKey  = KgenSenc((tre,JoinNonce, JoinEUI, DevNonce), NwkKey) in
-    let NwkSEncKey  = KgenSenc((four,JoinNonce, JoinEUI, DevNonce), NwkKey) in
     let tag2 : bitstring = mac((JoinNonce,Home_NetID, DevAddr), NwkKey) in
     out(c,senc((JoinNonce, Home_NetID, DevAddr, tag2),NwkKey)); (*using deterministic senc function, maybe wrong *)
-    !(in(c,(cipher : bitstring,tag3 : bitstring, FCntUp: bitstring));
-    let plaintext2 = sdecProb(cipher,NwkSEncKey) in
+    (*2 . handshake done, now generate keys *)
+    let FNwkSIntKey = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let SnwkSIntKey = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let AppsKey  = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+    let NwkSEncKey  = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
+
+    (*3.  receive messages *)
+    !(in(c,(cipher : bitstring,tag3 : bitstring));
+    let (plaintext2 :bitstring,FCntUp:coins ) = sdec(cipher,NwkSEncKey) in
     let (=tag3) = mac((DevAddr, FCntUp, plaintext2), NwkSEncKey)).
 
 
@@ -83,9 +83,12 @@ process
     new Appkey :key;
     new NwkKey :key;
     new JoinEUI :bitstring;
+    
     new DevEUI :bitstring;
     new DevNonce: bitstring;
     new DevAddr: bitstring;
+    (* first we assume that attacker knows the JOINserver: *)
+    out(c,JoinEUI);
     ((ED(Appkey, NwkKey, JoinEUI,DevEUI,DevNonce)) | (JS(Appkey, NwkKey,DevEUI,JoinEUI,DevAddr)))
     
 
