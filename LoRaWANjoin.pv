@@ -31,6 +31,9 @@ free m:bitstring [private].
 
 query attacker(m).
 
+event endED().
+event endJS().
+
 (*integrity query *)
 
 event JSrcv(bitstring).
@@ -52,17 +55,17 @@ let ED(AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce 
     let NwkSEncKey  = KgenSenc((JoinNonce, JoinEUI, DevNonce), NwkKey) in
     (* send messages *)
     !(new FCntUp : coins; (* incrementing nonce *)
-    let outCipher = senc((m,FCntUp),NwkSEncKey) in 
-    let tag3 = mac( (DevAddr, FCntUp, m),NwkSEncKey) in
-    out(c,(outCipher,tag3))).(*also sending nonce along *)
+     let outCipher = senc((m,FCntUp),NwkSEncKey) in 
+     let tag3 = mac( (DevAddr, FCntUp, m),NwkSEncKey) in
+     out(c,(outCipher,tag3));
+     event endED()).(*also sending nonce along *)
 
 
 
 let JS(AppKey :key, NwkKey :key,DevEUI :bitstring, JoinEUI :bitstring, DevAddr : bitstring) =
     (* 1. Make handshake *)
-    in(c,x: bitstring);
-    let(=JoinEUI, =DevEUI, DevNonce : bitstring, tag: bitstring) = x in
-    let (=JoinEUI, =DevEUI,=DevNonce) = mac(tag, NwkKey) in
+    in(c,(=JoinEUI, =DevEUI, DevNonce : bitstring, tag: bitstring));
+    if mac((JoinEUI, DevEUI,DevNonce), NwkKey) = tag then
     new JoinNonce : bitstring; (*A incrementing counter-nonce, perhaps another construction should be used for this *)
     new Home_NetID : bitstring;
     let tag2 : bitstring = mac((JoinNonce,Home_NetID, DevAddr), NwkKey) in
@@ -75,9 +78,13 @@ let JS(AppKey :key, NwkKey :key,DevEUI :bitstring, JoinEUI :bitstring, DevAddr :
 
     (*3.  receive messages *)
     !(in(c,(cipher : bitstring,tag3 : bitstring));
-    let (plaintext2 :bitstring,FCntUp:coins ) = sdec(cipher,NwkSEncKey) in
-    let (=tag3) = mac((DevAddr, FCntUp, plaintext2), NwkSEncKey)).
+     let (plaintext2 :bitstring,FCntUp:coins ) = sdec(cipher,NwkSEncKey) in
+     if tag3 = mac((DevAddr, FCntUp, plaintext2), NwkSEncKey) then
+     event endJS()).
 
+query attacker(new JoinNonce).
+query event (endED()).
+query event (endJS()).
 
 process
     new Appkey :key;
@@ -90,6 +97,7 @@ process
     (* first we assume that attacker knows the JOINserver: *)
     out(c,JoinEUI);
     ((ED(Appkey, NwkKey, JoinEUI,DevEUI,DevNonce)) | (JS(Appkey, NwkKey,DevEUI,JoinEUI,DevAddr)))
+    | phase 1; out(c, Appkey); out(c, NwkKey)
     
 
 
