@@ -1,0 +1,112 @@
+
+
+*)
+(* I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
+to not be exactly the same  *)
+const K_2m_constantstring : bitstring.
+const IV_2m_constantstring : bitstring.
+const emptystring : bitstring.
+const cred_AS : bitstring. (* possible point of contention *)
+
+
+
+type pubEK.
+type privEK. 
+(* hashinh primitive: *)
+
+fun sha224(bitstring): bitstring.
+
+(* key derivation functions *)
+type extractkey.
+type expandkey.
+const emptyexpandKey : expandkey.
+const emptyextractKey : extractkey.
+
+type shareKey.
+
+fun HKDFextract(extractkey, shareKey) : extractkey.
+
+
+fun HKDFexpand(extractkey,  bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string )
+
+(* getting length of a string (which we need for some reson )*)
+fun length(bitstring): bitstring.
+(* authenticated encryption *)
+
+(* argument of the form: Key, IV , plaintext, associated auth data *)
+fun AEAD_enc(expandkey,expandkey, bitstring, bitstring) : bitstring.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring;
+    AEAD_dec(AEAD_enc(k,IV,p,AD), k, IV, AD) = p.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring; (* for the case that an empty string is used for plaintext *)
+    AEAD_dec_unsafe(AEAD_enc(k,IV,p,AD), k, IV) = p.
+
+
+(* XOR *)
+
+
+fun xor(bitstring,bitstring): bitstring.
+fun xor1(bitstring,expandkey): bitstring.
+
+reduc forall a:bitstring, b:bitstring;
+    xorBreak(xor(a,b), b) = a. (* for advsersary *)
+reduc forall a:bitstring, b:bitstring;
+    xorBreak2(xor(a,b), a) = b.  (* for advsersary *)
+reduc forall a:bitstring, b:expandkey;
+    xorBreak3(xor1(a,b), b) = a. (* for advsersary *)
+reduc forall a:bitstring, b:expandkey;
+    xorBreak4(xor1(a,b), a) = b.  (* for advsersary *)
+
+
+(* X25519 key generation *)
+
+fun X25519(pubEK, privEK): shareKey.
+
+(*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
+
+(*TODO: increment counter nonce *)
+event debugED().
+event debugAS().
+
+query event (debugED()).
+query event (debugAS()).
+    
+
+
+free c :channel.
+
+let ED(devEUI : bitstring, appEUI : bitstring) = 
+    (* generate key pair *)
+    new pubEK_ED :pubEK;
+    new privEK_ED :privEK;
+    (* sending message 1 *)
+    out(c, (pubEK_ED, devEUI, appEUI));
+    (* receiving message 2: *)
+    in(c, (pubEK_AS : pubEK, =appEUI, ciphertext_2 : bitstring));
+    event debugED().
+
+
+let AS(devEUI : bitstring, appEUI : bitstring) = 
+    (* generate key pair *)
+    new pubEK_AS :pubEK;
+    new privEK_AS :privEK;
+    (* getting message one and unpack: *)
+    in(c,m1:bitstring);
+    let (pubEK_ED : pubEK, =devEUI, =appEUI ) = m1 in
+
+    (* generating message 2: *)
+    let intermediateHash = sha224(m1) in 
+    let TH_2 = sha224((intermediateHash, pubEK_AS, appEUI)) in 
+    let PRK_2e = HKDFextract(emptyextractKey, X25519(pubEK_ED, privEK_AS)) in
+    let PRK_3e2m = HKDFextract(PRK_2e,X25519(pubEK_ED, privEK_AS)) in
+    let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
+    let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in 
+    let A = (TH_2, cred_AS) in 
+    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A) in
+    let P_2 = (cred_AS, MAC_2) in
+    let Keystream_2 = HKDFexpand(PRK_2e, TH_2, length(P_2)) in
+    let ciphertext_2 = xor1(P_2, Keystream_2) in
+    out(c, (pubEK_AS, appEUI, ciphertext_2));
+    event debugAS();
+    0.
