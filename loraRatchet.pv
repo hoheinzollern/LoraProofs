@@ -1,17 +1,24 @@
 
 
-*)
 (* I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
 to not be exactly the same  *)
 const K_2m_constantstring : bitstring.
 const IV_2m_constantstring : bitstring.
+const K_3m_constantstring : bitstring.
+const IV_3m_constantstring : bitstring.
+const K_3ae_constantstring : bitstring.
+const IV_3ae_constantstring : bitstring.
 const emptystring : bitstring.
 const cred_AS : bitstring. (* possible point of contention *)
+const cred_ED : bitstring.
 
+const length_of_p2 : bitstring.
 
+type shareKey.
 
 type pubEK.
 type privEK. 
+fun pkEK(privEK): pubEK.
 (* hashinh primitive: *)
 
 fun sha224(bitstring): bitstring.
@@ -22,7 +29,11 @@ type expandkey.
 const emptyexpandKey : expandkey.
 const emptyextractKey : extractkey.
 
-type shareKey.
+(* X25519 key generation *)
+
+fun X25519(pubEK, privEK): shareKey.
+
+equation forall sk1 : privEK, sk2 : privEK;  X25519(pkEK(sk1), sk2) = X25519(pkEK(sk2), sk1).
 
 fun HKDFextract(extractkey, shareKey) : extractkey.
 
@@ -42,26 +53,17 @@ reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring;
 reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring; (* for the case that an empty string is used for plaintext *)
     AEAD_dec_unsafe(AEAD_enc(k,IV,p,AD), k, IV) = p.
 
+fun epxandKey_bitstring(expandkey) : bitstring [typeConverter].
 
 (* XOR *)
 
 
 fun xor(bitstring,bitstring): bitstring.
-fun xor1(bitstring,expandkey): bitstring.
 
 reduc forall a:bitstring, b:bitstring;
     xorBreak(xor(a,b), b) = a. (* for advsersary *)
 reduc forall a:bitstring, b:bitstring;
     xorBreak2(xor(a,b), a) = b.  (* for advsersary *)
-reduc forall a:bitstring, b:expandkey;
-    xorBreak3(xor1(a,b), b) = a. (* for advsersary *)
-reduc forall a:bitstring, b:expandkey;
-    xorBreak4(xor1(a,b), a) = b.  (* for advsersary *)
-
-
-(* X25519 key generation *)
-
-fun X25519(pubEK, privEK): shareKey.
 
 (*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
 
@@ -71,26 +73,62 @@ event debugAS().
 
 query event (debugED()).
 query event (debugAS()).
-    
+query 
+    event (debugAS()) ==> event (debugED()).
 
 
 free c :channel.
 
 let ED(devEUI : bitstring, appEUI : bitstring) = 
     (* generate key pair *)
-    new pubEK_ED :pubEK;
+
     new privEK_ED :privEK;
+    let pubEK_ED = pkEK(privEK_ED) in
+
     (* sending message 1 *)
     out(c, (pubEK_ED, devEUI, appEUI));
+
+    let intermediateHash = sha224((pubEK_ED, devEUI, appEUI)) in (* calculating the hash on m1 *)
     (* receiving message 2: *)
-    in(c, (pubEK_AS : pubEK, =appEUI, ciphertext_2 : bitstring));
-    event debugED().
+    in(c, (pubEK_AS : pubEK, =appEUI, ciphertext_2 : bitstring)); 
+    let PRK_2e = HKDFextract(emptyextractKey, X25519(pubEK_AS, privEK_ED)) in
+    let TH_2 = sha224((intermediateHash, pubEK_AS, appEUI)) in 
+    let Keystream_2 = epxandKey_bitstring(HKDFexpand(PRK_2e, TH_2, length_of_p2)) in
+    let (=cred_AS, MAC_2 : bitstring) = xorBreak(ciphertext_2, Keystream_2) in (* this is weird, I can put anything in cred_AS *)
+    let PRK_3e2m = HKDFextract(PRK_2e,X25519(pubEK_AS, privEK_ED)) in
+    let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
+    let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in
+    let A = (TH_2, cred_AS) in 
+    if AEAD_enc(K_2m, IV_2m, emptystring, A) = MAC_2 then
+
+    (* generating message 3 *)
+
+    let TH_3 = sha224((TH_2, ciphertext_2)) in 
+    let PRK_4x3m = HKDFextract(PRK_3e2m, X25519(pubEK_AS, privEK_ED)) in
+    let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
+    let IV_3m = HKDFexpand(PRK_3e2m, TH_3, IV_3m_constantstring) in
+    let A1 = (TH_2, cred_AS) in 
+    let MAC_3 = AEAD_enc(K_3m, IV_3m, emptystring, A) in
+    let K_3ae = HKDFexpand(PRK_3e2m, TH_3,K_2m_constantstring) in 
+    let IV_3ae = HKDFexpand(PRK_3e2m, TH_3, IV_3ae_constantstring) in
+    let P_2 = (cred_ED, MAC_3) in
+    let A_1 = (emptystring, TH_3) in 
+    let ciphertext_3 = AEAD_enc(K_3ae, IV_3ae, P_2, A_1) in
+    out(c, ciphertext_3);
+
+
+    event debugED();
+
+  (*)  if AEAD_enc(K_2m, IV_2m, emptystring, A) = MAC_2 then*)
+    0.
+
+
 
 
 let AS(devEUI : bitstring, appEUI : bitstring) = 
     (* generate key pair *)
-    new pubEK_AS :pubEK;
     new privEK_AS :privEK;
+    let pubEK_AS = pkEK(privEK_AS) in
     (* getting message one and unpack: *)
     in(c,m1:bitstring);
     let (pubEK_ED : pubEK, =devEUI, =appEUI ) = m1 in
@@ -105,8 +143,37 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let A = (TH_2, cred_AS) in 
     let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A) in
     let P_2 = (cred_AS, MAC_2) in
-    let Keystream_2 = HKDFexpand(PRK_2e, TH_2, length(P_2)) in
-    let ciphertext_2 = xor1(P_2, Keystream_2) in
-    out(c, (pubEK_AS, appEUI, ciphertext_2));
+    let Keystream_2 = HKDFexpand(PRK_2e, TH_2,length_of_p2) in
+    let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
+    out(c, (pubEK_AS, appEUI, ciphertext_2)); 
+
+    (* receiving message 3 *)
+    in(c, ciphertext_3 : bitstring);
+    let TH_3 = sha224((TH_2, ciphertext_2)) in 
+    let PRK_4x3m = HKDFextract(PRK_3e2m, X25519(pubEK_ED, privEK_AS)) in
+    let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
+    let IV_3m = HKDFexpand(PRK_3e2m, TH_3, IV_3m_constantstring) in
+
+
+    let K_3ae = HKDFexpand(PRK_3e2m, TH_3,K_3ae_constantstring) in
+    let IV_3ae = HKDFexpand(PRK_3e2m, TH_3, IV_3ae_constantstring) in
+    let A_1 = (emptystring, TH_3) in 
+    let (=cred_ED, MAC_3 : bitstring) = AEAD_dec(ciphertext_3,K_3ae, IV_3ae, A_1) in (* I can put in any value åfor ID_CRED??? *)
+    if AEAD_enc(K_3m, IV_3m, emptystring, A_1) = MAC_3 then
     event debugAS();
+
+    (*)
+    let TH_4 = sha224((TH_3, cipher))
+    let PRK_4e2m = HKDFextract(PRK_2e,X25519(pubEK_ED, privEK_AS)) in *)
+
     0.
+free n:bitstring [private].
+
+
+
+process
+    new devEUI :bitstring;
+    new appEUI :bitstring;
+    ((ED(devEUI, appEUI)) | (AS(devEUI, appEUI)))
+  
+    
