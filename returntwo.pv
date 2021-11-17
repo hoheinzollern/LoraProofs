@@ -1,0 +1,50 @@
+
+free c :channel [private].
+
+free m:bitstring [private].
+
+type pubEK.
+type privEK. 
+type shareKey.
+fun X25519(pubEK, privEK): shareKey.
+fun make(bitstring): bitstring.
+
+fun f(bitstring) : bitstring.
+
+fun xor(bitstring,bitstring): bitstring.
+
+reduc forall a:bitstring, b:bitstring;
+    xorBreak(xor(a,b), b) = a. (* for advsersary *)
+reduc forall a:bitstring, b:bitstring;
+    xorBreak2(xor(a,b), a) = b.  (* for advsersary *)
+fun pkEK(privEK): pubEK.
+fun transform(bitstring):bitstring.
+
+equation forall sk1 : privEK, sk2 : privEK;  X25519(pkEK(sk1), sk2) = X25519(pkEK(sk2), sk1).
+
+
+
+event EDcreatekey(bitstring).
+event AScreatekey(bitstring).
+event test().
+
+query event (test()).
+query k : bitstring;
+      event (EDcreatekey(k)) ==> event (AScreatekey(k)).
+
+
+type heroin.
+
+
+free s:bitstring [private].
+free t:bitstring [private].
+
+
+const hero : heroin.
+process
+  let (l:bitstring,r:bitstring) = s in
+  event test();
+  event AScreatekey(l);
+  event EDcreatekey(t);
+  out(c,s)
+    

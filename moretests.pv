@@ -1,0 +1,42 @@
+
+free ch :channel [private].
+type expandkey.
+
+(* argument of the form: Key, IV , plaintext, associated auth data *)
+fun AEAD_enc(expandkey,expandkey, bitstring, bitstring) : bitstring.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring;
+    AEAD_dec(AEAD_enc(k,IV,p,AD), k, IV, AD) = p.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring; (* for the case that an empty string is used for plaintext *)
+    AEAD_dec_unsafe(AEAD_enc(k,IV,p,AD), k, IV) = p.
+event equals().
+event notSame().
+event debug().
+query event (equals()).
+query event (notSame()).
+query event (debug()).
+
+
+free s:bitstring [private].
+free t:bitstring [private].
+
+
+process
+  new m : bitstring;
+  new AD : bitstring;
+  new key : expandkey;
+  new IV : expandkey;
+
+  new badIV : expandkey;
+
+  let c = AEAD_enc(key,IV,m,AD) in
+
+  let MPRIME = AEAD_dec(c,key, badIV, AD) in
+  event debug();
+  if MPRIME = m then 
+    event equals()
+  else event notSame();
+
+  out(ch,s)
+    

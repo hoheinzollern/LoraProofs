@@ -1,0 +1,56 @@
+
+free c :channel [private].
+
+free m:bitstring [private].
+
+type pubEK.
+type privEK. 
+type shareKey.
+fun X25519(pubEK, privEK): shareKey.
+fun make(bitstring): bitstring.
+
+
+fun pkEK(privEK): pubEK.
+
+
+equation forall sk1 : privEK, sk2 : privEK;  X25519(pkEK(sk1), sk2) = X25519(pkEK(sk2), sk1).
+
+event EDcreatekey(shareKey).
+event AScreatekey(shareKey).
+event test().
+
+
+query k : shareKey;
+      event (EDcreatekey(k)) ==> event (AScreatekey(k)).
+
+let ED() = 
+  new EDprivkey : privEK;
+  let EDpubkey = pkEK(EDprivkey) in
+  out(c, EDpubkey);
+  in(c, ASpkey : pubEK);
+  let k = X25519(ASpkey, EDprivkey ) in 
+  event EDcreatekey(k);
+  
+  0.
+
+let AS() =
+  new ASprivkey : privEK;
+  let ASpubkey = pkEK(ASprivkey) in
+  in(c, EDpubk :pubEK);
+  let k = X25519(EDpubk, ASprivkey) in 
+  event AScreatekey(k);
+  out(c,ASpubkey);
+
+  event test();
+
+
+  0.
+
+
+
+
+process
+    ((ED()) | (AS()))
+    
+  
+    

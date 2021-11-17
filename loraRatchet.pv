@@ -1,5 +1,9 @@
+(*messages I want to send *)
 
-
+const message0 : bitstring [private].
+const message1 : bitstring [private].
+const message2 : bitstring [private].
+const message3 : bitstring [private].
 (* I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
 to not be exactly the same  *)
 const K_2m_constantstring : bitstring.
@@ -8,7 +12,12 @@ const K_3m_constantstring : bitstring.
 const IV_3m_constantstring : bitstring.
 const K_3ae_constantstring : bitstring.
 const IV_3ae_constantstring : bitstring.
+const K_4ae_constantstring : bitstring.
+const IV_4ae_constantstring : bitstring.
+const SCK_constantstring : bitstring.
+const RCK_constantstring : bitstring.
 const emptystring : bitstring.
+
 const cred_AS : bitstring. (* possible point of contention *)
 const cred_ED : bitstring.
 
@@ -29,6 +38,21 @@ type expandkey.
 const emptyexpandKey : expandkey.
 const emptyextractKey : extractkey.
 
+
+(* diffie hellman ratchet shceme *)
+type DHpubkey.
+type DHprivkey.
+type DHsharekey.
+fun DHpub(DHprivkey): DHpubkey.
+fun DHRatch(DHpubkey,DHprivkey) : DHsharekey.
+equation forall sk1 : DHprivkey, sk2 : DHprivkey;  DHRatch(DHpub(sk1), sk2) = DHRatch(DHpub(sk2), sk1).
+(* key ratchet shceme, including encryption and decryption *)
+type ratchKey.
+fun ratchet(DHsharekey, bitstring): ratchKey. (* grrrr why won't you return two things????! *)
+fun genseedFromKey(ratchKey):bitstring.
+fun senc ( bitstring , ratchKey ) : bitstring.
+reduc forall m: bitstring , k : ratchKey ; sdec(senc(m, k) , k ) = m.
+
 (* X25519 key generation *)
 
 fun X25519(pubEK, privEK): shareKey.
@@ -38,7 +62,9 @@ equation forall sk1 : privEK, sk2 : privEK;  X25519(pkEK(sk1), sk2) = X25519(pkE
 fun HKDFextract(extractkey, shareKey) : extractkey.
 
 
-fun HKDFexpand(extractkey,  bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string )
+fun HKDFexpand(extractkey,  bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string *)
+
+
 
 (* getting length of a string (which we need for some reson )*)
 fun length(bitstring): bitstring.
@@ -73,8 +99,12 @@ event debugAS().
 
 query event (debugED()).
 query event (debugAS()).
-query 
-    event (debugAS()) ==> event (debugED()).
+
+
+event sendmsg(bitstring).
+event rcvmsg(bitstring).
+query msg : bitstring;
+    event (rcvmsg(msg)) ==> event (sendmsg(msg)). 
 
 
 free c :channel.
@@ -115,11 +145,39 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let A_1 = (emptystring, TH_3) in 
     let ciphertext_3 = AEAD_enc(K_3ae, IV_3ae, P_2, A_1) in
     out(c, ciphertext_3);
+    (*receving message 4 *)
+    in(c,ciphertext_4: bitstring);
+    let TH_4 = sha224((TH_3, ciphertext_3)) in
+    let A_1_tmp = (emptystring, TH_3) in 
+    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
+    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
 
+    let (=emptystring) = AEAD_dec(ciphertext_4,K_4ae, IV_4ae, A_1) in
+
+    (* receiving racthet seed: *)
+    let RCK =  epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
+    (* sending racthet seed: *)
+    let SCK = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
+
+    (* generating DH ratchet keys, and sending public key *)
+    new DHprivkey_0_ED : DHprivkey;
+    let DHpubkey_0_ED = DHpub(DHprivkey_0_ED) in
+    out(c,DHpubkey_0_ED);
+    in(c, DHpubkey_0_AS:DHpubkey);
+    let DHsharekey_0 = DHRatch(DHpubkey_0_AS,DHprivkey_0_ED ) in (* constructing the first DH shared key *)
+
+    
+    (*creating first encryption key (sending) *)
+    let mkSK_0 = ratchet(DHsharekey_0, SCK) in
+    let seed_0_RCV = genseedFromKey(mkSK_0) in
+    (* receiving message 0*)
+    in(c, messageZero: bitstring);
+    let decrypt0 = sdec(messageZero, mkSK_0) in
+    event rcvmsg(message0);
+    let mkSK_1 = ratchet(DHsharekey_0, seed_0_RCV) in
 
     event debugED();
 
-  (*)  if AEAD_enc(K_2m, IV_2m, emptystring, A) = MAC_2 then*)
     0.
 
 
@@ -153,18 +211,52 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let PRK_4x3m = HKDFextract(PRK_3e2m, X25519(pubEK_ED, privEK_AS)) in
     let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
     let IV_3m = HKDFexpand(PRK_3e2m, TH_3, IV_3m_constantstring) in
-
-
     let K_3ae = HKDFexpand(PRK_3e2m, TH_3,K_3ae_constantstring) in
     let IV_3ae = HKDFexpand(PRK_3e2m, TH_3, IV_3ae_constantstring) in
     let A_1 = (emptystring, TH_3) in 
     let (=cred_ED, MAC_3 : bitstring) = AEAD_dec(ciphertext_3,K_3ae, IV_3ae, A_1) in (* I can put in any value åfor ID_CRED??? *)
     if AEAD_enc(K_3m, IV_3m, emptystring, A_1) = MAC_3 then
+
+
+
+    (*generating message 4*)
+    let TH_4 = sha224((TH_3, ciphertext_3)) in
+    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
+    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
+    let A = (emptystring, TH_3) in 
+    let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A) in
+    out(c, ciphertext_4);
+
+
+
+    (* receiving racthet seed: *)
+    let RCK = epxandKey_bitstring( HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring))in
+    (* sending racthet seed: *)
+    let SCK = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
+
+
+    (* receving public DH ratchet public key, generating DH ratchet keys *)
+    in(c,DHpubkey_0_ED: DHpubkey);
+    new DHprivkey_0_AS : DHprivkey;
+    let DHpubkey_0_AS = DHpub(DHprivkey_0_AS) in
+    out(c,DHpubkey_0_AS); (* now sending the public key *)
+    let DHsharekey_0 = DHRatch(DHpubkey_0_ED,DHprivkey_0_AS ) in (* constructing the first DH shared key *)
+
+    (*creating first encryption key (receiving) *)
+    let mkRK_0_send = ratchet(DHsharekey_0, RCK) in
+    let seed_1_send = genseedFromKey(mkRK_0_send) in
+    event rcvmsg(message0);
+    out(c, senc(message0,mkRK_0_send));
+
+
+    let mkRK_1 = ratchet(DHsharekey_0, seed_1_send) in
+     
+
+
+
     event debugAS();
 
-    (*)
-    let TH_4 = sha224((TH_3, cipher))
-    let PRK_4e2m = HKDFextract(PRK_2e,X25519(pubEK_ED, privEK_AS)) in *)
+ 
 
     0.
 free n:bitstring [private].
