@@ -1,5 +1,7 @@
+set verboseClauses = short.
+set verboseRules = true.
 
-free c :channel [private].
+free c :channel.
 
 free m:bitstring [private].
 
@@ -19,6 +21,9 @@ event EDcreatekey(shareKey).
 event AScreatekey(shareKey).
 event test().
 
+const one: bitstring.
+const two: bitstring.
+
 
 query k : shareKey;
       event (EDcreatekey(k)) ==> event (AScreatekey(k)).
@@ -26,8 +31,8 @@ query k : shareKey;
 let ED() = 
   new EDprivkey : privEK;
   let EDpubkey = pkEK(EDprivkey) in
-  out(c, EDpubkey);
-  in(c, ASpkey : pubEK);
+  out(c, (one, EDpubkey));
+  in(c, (=two, ASpkey : pubEK));
   let k = X25519(ASpkey, EDprivkey ) in 
   event EDcreatekey(k);
   
@@ -36,10 +41,10 @@ let ED() =
 let AS() =
   new ASprivkey : privEK;
   let ASpubkey = pkEK(ASprivkey) in
-  in(c, EDpubk :pubEK);
+  in(c, (=one, EDpubk :pubEK));
   let k = X25519(EDpubk, ASprivkey) in 
   event AScreatekey(k);
-  out(c,ASpubkey);
+  out(c,(two, ASpubkey));
 
   event test();
 
