@@ -24,6 +24,14 @@ const cred_ED : bitstring.
 const length_of_p2 : bitstring.
 
 type shareKey.
+(* Ale: use this for exponents *)
+type G.
+type dhExp.
+const X25519: G.
+fun exp(G, dhExp): G.
+equation forall g: G, x: dhExp, y: dhExp; 
+    exp(exp(g, x), y) = exp(exp(g, y), x).
+
 
 type pubEK.
 type privEK. 
@@ -40,15 +48,19 @@ const emptyextractKey : extractkey.
 
 
 (* diffie hellman ratchet shceme *)
-type DHpubkey.
+type DHgroup.
 type DHprivkey.
-type DHsharekey.
 fun DHpub(DHprivkey): DHpubkey.
 fun DHRatch(DHpubkey,DHprivkey) : DHsharekey.
 equation forall sk1 : DHprivkey, sk2 : DHprivkey;  DHRatch(DHpub(sk1), sk2) = DHRatch(DHpub(sk2), sk1).
 (* key ratchet shceme, including encryption and decryption *)
 type ratchKey.
-fun ratchet(DHsharekey, bitstring): ratchKey. (* grrrr why won't you return two things????! *)
+
+(* Ale: use this instead *)
+fun ratchetKey(G, bitstring): ratchKey. 
+fun ratchetSeed(G, bitstring): bitstring.
+
+
 fun genseedFromKey(ratchKey):bitstring.
 fun senc ( bitstring , ratchKey ) : bitstring.
 reduc forall m: bitstring , k : ratchKey ; sdec(senc(m, k) , k ) = m.
@@ -62,7 +74,7 @@ equation forall sk1 : privEK, sk2 : privEK;  X25519(pkEK(sk1), sk2) = X25519(pkE
 fun HKDFextract(extractkey, shareKey) : extractkey.
 
 
-fun HKDFexpand(extractkey,  bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string *)
+fun HKDFexpand(extractkey, bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string *)
 
 
 
@@ -181,6 +193,17 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     0.
 
 
+    new ch_ED: channel;(
+    out(ch_ED, sck) |
+    !(
+        in(ch_ED, sck: sessionKey) [precise];
+        event gotSck(sck);
+        ... ractheting ...
+
+        out(ch_ED, sck');
+    ))
+
+
 
 
 let AS(devEUI : bitstring, appEUI : bitstring) = 
@@ -200,8 +223,8 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in 
     let A = (TH_2, cred_AS) in 
     let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A) in
-    let P_2 = (cred_AS, MAC_2) in
-    let Keystream_2 = HKDFexpand(PRK_2e, TH_2,length_of_p2) in
+    let P_2 = ((*cred_AS this goes*) MAC_2) in
+    let Keystream_2 = HKDFexpand(PRK_2e, TH_2,(*length_of_p2 drop this *)) in
     let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
     out(c, (pubEK_AS, appEUI, ciphertext_2)); 
 
