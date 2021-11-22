@@ -91,8 +91,13 @@ event debugAS().
 event gotSckED(ratchKey).
 event gotSckAS(ratchKey).
 
+ 
+
+query k1 : ratchKey;
+    event (gotSckED(k1))==> event (gotSckAS(k1)).
+
 query k : ratchKey;
-    event (gotSckAS(k)) ==> event (gotSckED(k)).
+    event (gotSckED(k)) ==> event (gotSckAS(k)).
 
 query event (debugED()).
 query event (debugAS()).
