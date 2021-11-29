@@ -227,8 +227,8 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let PRK_3e2m = HKDFextract(PRK_2e,exp(pubEK_ED, privEK_AS)) in
     let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
     let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in 
-    let A = (TH_2, cred_AS) in 
-    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A) in
+    let A_0 = (TH_2, cred_AS) in 
+    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A_0) in
     let P_2 = (cred_AS, MAC_2) in
     let Keystream_2 = HKDFexpand(PRK_2e, TH_2,emptystring) in
     let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
@@ -252,8 +252,8 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let TH_4 = sha256((TH_3, ciphertext_3)) in
     let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
     let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
-    let A = (emptystring, TH_3) in 
-    let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A) in
+    let A_2 = (emptystring, TH_3) in 
+    let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A_2) in
     out(c, ciphertext_4);
 
 
@@ -299,9 +299,9 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
         let message_i_up = sdec(C_i_up,mkSK_i_storeup) in
         event ASreceive(message_i_up);
 
-        let mkSK_i_down = ratchetKey(DHsharekey_0, seed_storeup) in
-        let seed_i_down = ratchetSeed(DHsharekey_0, seed_storeup) in
-        out(store_downlink_AS, (mkSK_i_down,seed_i_down))
+        let mkSK_i_up = ratchetKey(DHsharekey_0, seed_storeup) in
+        let seed_i_up = ratchetSeed(DHsharekey_0, seed_storeup) in
+        out(store_downlink_AS, (mkSK_i_up,seed_i_up))
         )).
 
 
