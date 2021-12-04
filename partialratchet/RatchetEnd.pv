@@ -1,5 +1,9 @@
 
-(* I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
+(*
+This file is meant to only test the final ratcheting of loraratchet
+
+
+ I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
 to not be exactly the same  *)
 const K_2m_constantstring : bitstring.
 const IV_2m_constantstring : bitstring.
@@ -120,56 +124,10 @@ free uplink : channel.
 
 free store_uplink : channel [private].
 
-let ED(devEUI : bitstring, appEUI : bitstring) = 
+
+
+let ED(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHsharekey_0:G) = 
     (* generate key pair *)
-
-    new privEK_ED :exponent;
-    let pubEK_ED = exp(g, privEK_ED) in
-
-    (* sending message 1 *)
-    out(c, (pubEK_ED, devEUI, appEUI));
-
-    let intermediateHash = sha256((pubEK_ED, devEUI, appEUI)) in (* calculating the hash on m1 *)
-    (* receiving message 2: *)
-    in(c, (pubEK_AS : G, =appEUI, ciphertext_2 : bitstring)); 
-    let PRK_2e = HKDFextract(emptyextractKey, exp(pubEK_AS, privEK_ED)) in
-    let TH_2 = sha256((intermediateHash, pubEK_AS, appEUI)) in 
-    let Keystream_2 = epxandKey_bitstring(HKDFexpand(PRK_2e, TH_2, emptystring)) in
-    let (=cred_AS, MAC_2 : bitstring) = xorBreak(ciphertext_2, Keystream_2) in (* this is weird, I can put anything in cred_AS *)
-    let PRK_3e2m = HKDFextract(PRK_2e,exp(pubEK_AS, privEK_ED)) in
-    let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
-    let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in
-    let A = (TH_2, cred_AS) in 
-    if AEAD_enc(K_2m, IV_2m, emptystring, A) = MAC_2 then
-
-    (* generating message 3 *)
-
-    let TH_3 = sha256((TH_2, ciphertext_2)) in 
-    let PRK_4x3m = HKDFextract(PRK_3e2m, exp(pubEK_AS, privEK_ED)) in
-    let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
-    let IV_3m = HKDFexpand(PRK_3e2m, TH_3, IV_3m_constantstring) in
-    let A1 = (TH_2, cred_AS) in 
-    let MAC_3 = AEAD_enc(K_3m, IV_3m, emptystring, A) in
-    let K_3ae = HKDFexpand(PRK_3e2m, TH_3,K_2m_constantstring) in 
-    let IV_3ae = HKDFexpand(PRK_3e2m, TH_3, IV_3ae_constantstring) in
-    let P_2 = (cred_ED, MAC_3) in
-    let A_1 = (emptystring, TH_3) in 
-    let ciphertext_3 = AEAD_enc(K_3ae, IV_3ae, P_2, A_1) in
-    out(c, ciphertext_3);
-    (*receving message 4 *)
-    in(c,ciphertext_4: bitstring);
-    let TH_4 = sha256((TH_3, ciphertext_3)) in
-    let A_1_tmp = (emptystring, TH_3) in 
-    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
-    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
-    let (=emptystring) = AEAD_dec(ciphertext_4,K_4ae, IV_4ae, A_1) in
-
-    (* receiving racthet seed: *)
-    let downlinkRatchet_Seed0 =  epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-    (* sending racthet seed: *)
-    let uplinkRatchet_Seed0 = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, SCK_constantstring)) in
-
-    let DHsharekey_0 = exp(pubEK_AS,privEK_ED ) in (* constructing the first DH shared key from already existing DH keys *)
 
     (* downlink keys*)
     let mkSK_0_down = ratchetKey(DHsharekey_0, downlinkRatchet_Seed0) in
@@ -188,7 +146,7 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
 
 
     (out(uplink, c_1_uplink) |
-    (
+     (
         in(store_downlink_ED,  (sharekey_in_down :ratchKey, seed_in_down:bitstring)) [precise];
         in(downlink, c_1_down:bitstring) [precise];
         let message_0_down = sdec(c_1_down,sharekey_in_down) in
@@ -212,60 +170,9 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
 
 
 
-let AS(devEUI : bitstring, appEUI : bitstring) = 
-    (* generate key pair *)
-    new privEK_AS :exponent;
-    let pubEK_AS = exp(g,privEK_AS) in
-    (* getting message one and unpack: *)
-    in(c,m1:bitstring);
-    let (pubEK_ED : G, =devEUI, =appEUI ) = m1 in
+let AS(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHsharekey_0:G) = 
 
-    (* generating message 2: *)
-    let intermediateHash = sha256(m1) in 
-    let TH_2 = sha256((intermediateHash, pubEK_AS, appEUI)) in 
-    let PRK_2e = HKDFextract(emptyextractKey, exp(pubEK_ED, privEK_AS)) in
-    let PRK_3e2m = HKDFextract(PRK_2e,exp(pubEK_ED, privEK_AS)) in
-    let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
-    let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in 
-    let A_0 = (TH_2, cred_AS) in 
-    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A_0) in
-    let P_2 = (cred_AS, MAC_2) in
-    let Keystream_2 = HKDFexpand(PRK_2e, TH_2,emptystring) in
-    let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
-    out(c, (pubEK_AS, appEUI, ciphertext_2)); 
-
-    (* receiving message 3 *)
-    in(c, ciphertext_3 : bitstring);
-    let TH_3 = sha256((TH_2, ciphertext_2)) in 
-    let PRK_4x3m = HKDFextract(PRK_3e2m, exp(pubEK_ED, privEK_AS)) in
-    let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
-    let IV_3m = HKDFexpand(PRK_3e2m, TH_3, IV_3m_constantstring) in
-    let K_3ae = HKDFexpand(PRK_3e2m, TH_3,K_3ae_constantstring) in
-    let IV_3ae = HKDFexpand(PRK_3e2m, TH_3, IV_3ae_constantstring) in
-    let A_1 = (emptystring, TH_3) in 
-    let (=cred_ED, MAC_3 : bitstring) = AEAD_dec(ciphertext_3,K_3ae, IV_3ae, A_1) in (* I can put in any value åfor ID_CRED??? *)
-    if AEAD_enc(K_3m, IV_3m, emptystring, A_1) = MAC_3 then
-
-
-
-    (*generating message 4*)
-    let TH_4 = sha256((TH_3, ciphertext_3)) in
-    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
-    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
-    let A_2 = (emptystring, TH_3) in 
-    let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A_2) in
-    out(c, ciphertext_4);
-
-
-     (* receiving racthet seed: *)
-    let downlinkRatchet_Seed0 =  epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-    (* sending racthet seed: *)
-    let uplinkRatchet_Seed0 = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, SCK_constantstring)) in
-    (* receving public DH ratchet public key, gener ating DH ratchet keys *)
-
-    let DHsharekey_0 = exp(pubEK_ED,privEK_AS ) in (* constructing the first DH shared key from already existing DH keys *)
-    event debugAS();
-
+ 
 
     let mkSK_0_down = ratchetKey(DHsharekey_0, downlinkRatchet_Seed0) in
     let seed_0_down = ratchetSeed(DHsharekey_0, downlinkRatchet_Seed0) in
@@ -282,7 +189,7 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
 
 
     (out(downlink, c_1) |
-    (
+     (
         in(store_downlink_AS,( mkSK_i_storedown: ratchKey, seed_storedown :bitstring)) [precise];
 
         (* ratchet *)
@@ -306,9 +213,34 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
 
 
 
+(*
 
+What we need to run final ratcheting step
+
+
+*)
 
 process
+        (* generate key pair *)
+    new privEK_AS :exponent;
+    let pubEK_AS = exp(g,privEK_AS) in
+    (* generate key pair ED *)
+    new privEK_ED :exponent;
+    let pubEK_ED = exp(g,privEK_AS) in
+
+    new downlinkRatchet_SeedAS : bitstring;
+    new downlinkRatchet_SeedED : bitstring;
+    new uplinkRatchet_SeedAS : bitstring;
+    new uplinkRatchet_SeedED : bitstring;
+    let DHsharekey_AS = exp(pubEK_ED,privEK_AS) in
+    let DHsharekey_ED = exp( pubEK_AS,privEK_ED) in
+
+
     new devEUI :bitstring;
     new appEUI :bitstring;
-    ((ED(devEUI, appEUI)) | (AS(devEUI, appEUI)))
+
+
+
+    let DHsharekey_ED = exp(pubEK_AS,privEK_ED ) in
+    let DHsharekey_AS = exp(pubEK_ED,privEK_AS ) in  
+    ((ED(downlinkRatchet_SeedED, uplinkRatchet_SeedED, DHsharekey_ED )) | (AS(downlinkRatchet_SeedAS, uplinkRatchet_SeedAS,DHsharekey_AS )))

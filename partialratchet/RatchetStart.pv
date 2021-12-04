@@ -84,28 +84,33 @@ reduc forall a:bitstring, b:bitstring;
 (*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
 
 (*TODO: increment counter nonce *)
-event debugED().
-event debugAS().
+event EDsendmessage1().
+event ASgetmessage1().
 
-event EDreceive(bitstring).
-event EDsend(bitstring).
-event ASreceive(bitstring).
-event ASsend(bitstring).
+event ASsendmesage2().
+event EDgetmessage2().
 
-event gotSckED(ratchKey).
-event gotSckAS(ratchKey).
+event EDsendmessage3().
+event ASgetmessage3().
+
+event ASsendmesage4().
+event EDgetmessage4().
 
  
 
-query m : bitstring;
-    event (ASsend(m))==> event (EDreceive(m)).
+query 
+    event (ASgetmessage1())==> event (EDsendmessage1()).
 
 
 
-query m : bitstring;
-    event (EDsend(m))==> event (ASreceive(m)).
+query 
+    event (EDgetmessage2())==> event (ASsendmesage2()).
 
 
+query 
+    event (ASgetmessage3())==> event (EDsendmessage3()).
+query 
+    event (EDgetmessage4())==> event (ASsendmesage4()).   
 
 
 event sendmsg(bitstring).
@@ -127,11 +132,13 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let pubEK_ED = exp(g, privEK_ED) in
 
     (* sending message 1 *)
+    event EDsendmessage1();
     out(c, (pubEK_ED, devEUI, appEUI));
 
     let intermediateHash = sha256((pubEK_ED, devEUI, appEUI)) in (* calculating the hash on m1 *)
     (* receiving message 2: *)
     in(c, (pubEK_AS : G, =appEUI, ciphertext_2 : bitstring)); 
+    event EDgetmessage2();
     let PRK_2e = HKDFextract(emptyextractKey, exp(pubEK_AS, privEK_ED)) in
     let TH_2 = sha256((intermediateHash, pubEK_AS, appEUI)) in 
     let Keystream_2 = epxandKey_bitstring(HKDFexpand(PRK_2e, TH_2, emptystring)) in
@@ -155,9 +162,11 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let P_2 = (cred_ED, MAC_3) in
     let A_1 = (emptystring, TH_3) in 
     let ciphertext_3 = AEAD_enc(K_3ae, IV_3ae, P_2, A_1) in
+    event EDsendmessage3();
     out(c, ciphertext_3);
     (*receving message 4 *)
     in(c,ciphertext_4: bitstring);
+    event EDgetmessage4();
     let TH_4 = sha256((TH_3, ciphertext_3)) in
     let A_1_tmp = (emptystring, TH_3) in 
     let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
@@ -182,30 +191,8 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let c_1_uplink = senc(message_0, mkSK_0_down) in
     new store_downlink_ED : channel;
     new store_uplink_ED : channel;
+    0.
 
-    out(store_uplink_ED, (mkSK_0_up,seed_0_up));
-    out(store_downlink_ED, (mkSK_0_down, seed_0_down)); (* simply doing this for being able to get the things sent out again *)
-
-
-    (out(uplink, c_1_uplink) |
-    (
-        in(store_downlink_ED,  (sharekey_in_down :ratchKey, seed_in_down:bitstring)) [precise];
-        in(downlink, c_1_down:bitstring) [precise];
-        let message_0_down = sdec(c_1_down,sharekey_in_down) in
-        event EDreceive(message_0_down);
-        let mkSK_i_down = ratchetKey(DHsharekey_0, seed_in_down) in
-        let seed_i_down = ratchetSeed(DHsharekey_0, seed_in_down) in
-        out(store_downlink_ED, (mkSK_i_down, seed_i_down));
-
-
-        in(store_uplink_ED, (mkSK_in_up:ratchKey, seed_in_up:bitstring)) [precise];
-
-        let mkSK_i_up = ratchetKey(DHsharekey_0, seed_in_up) in
-        let seed_i_up = ratchetSeed(DHsharekey_0, seed_in_up) in
-        new message_i_up : bitstring;
-        event EDsend(message_i_up);
-        out(store_downlink_ED, (mkSK_i_up, seed_0_up));
-        out(uplink, senc(message_i_up,mkSK_i_up)))).
 
 
 
@@ -218,6 +205,7 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let pubEK_AS = exp(g,privEK_AS) in
     (* getting message one and unpack: *)
     in(c,m1:bitstring);
+    event ASgetmessage1();
     let (pubEK_ED : G, =devEUI, =appEUI ) = m1 in
 
     (* generating message 2: *)
@@ -232,10 +220,12 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let P_2 = (cred_AS, MAC_2) in
     let Keystream_2 = HKDFexpand(PRK_2e, TH_2,emptystring) in
     let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
+    event ASsendmesage2();
     out(c, (pubEK_AS, appEUI, ciphertext_2)); 
 
     (* receiving message 3 *)
     in(c, ciphertext_3 : bitstring);
+    event ASgetmessage3();
     let TH_3 = sha256((TH_2, ciphertext_2)) in 
     let PRK_4x3m = HKDFextract(PRK_3e2m, exp(pubEK_ED, privEK_AS)) in
     let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
@@ -254,55 +244,10 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
     let A_2 = (emptystring, TH_3) in 
     let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A_2) in
+    event ASsendmesage4();
     out(c, ciphertext_4);
 
-
-     (* receiving racthet seed: *)
-    let downlinkRatchet_Seed0 =  epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-    (* sending racthet seed: *)
-    let uplinkRatchet_Seed0 = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, SCK_constantstring)) in
-    (* receving public DH ratchet public key, gener ating DH ratchet keys *)
-
-    let DHsharekey_0 = exp(pubEK_ED,privEK_AS ) in (* constructing the first DH shared key from already existing DH keys *)
-    event debugAS();
-
-
-    let mkSK_0_down = ratchetKey(DHsharekey_0, downlinkRatchet_Seed0) in
-    let seed_0_down = ratchetSeed(DHsharekey_0, downlinkRatchet_Seed0) in
-    let mkSK_0_up = ratchetKey(DHsharekey_0, uplinkRatchet_Seed0) in
-    let seed_0_up = ratchetSeed(DHsharekey_0, uplinkRatchet_Seed0) in
-    new message_0 : bitstring;
-    let c_1 = senc(message_0, mkSK_0_down) in
-
-    new store_downlink_AS : channel;
-    new store_uplink_AS : channel;
-
-    out(store_downlink_AS, (mkSK_0_down, seed_0_down)); (* simply doing this for being able to get the things sent out again *)
-    out(store_uplink_AS, (mkSK_0_up, seed_0_up));
-
-
-    (out(downlink, c_1) |
-    (
-        in(store_downlink_AS,( mkSK_i_storedown: ratchKey, seed_storedown :bitstring)) [precise];
-
-        (* ratchet *)
-        let mkSK_i_down = ratchetKey(DHsharekey_0, seed_storedown) in
-        let seed_i_SCKdown = ratchetSeed(DHsharekey_0, seed_storedown) in
-        new message_i : bitstring;
-        event ASsend(message_i);
-        (*send next message and send to own channel  *)
-        out(downlink, (mkSK_i_down, senc(message_i, mkSK_i_down)));
-        out(store_downlink_AS, (mkSK_i_down, seed_i_SCKdown));
-        
-        in(uplink, C_i_up:bitstring);
-        in(store_uplink_AS, (mkSK_i_storeup: ratchKey, seed_storeup:bitstring));
-        let message_i_up = sdec(C_i_up,mkSK_i_storeup) in
-        event ASreceive(message_i_up);
-
-        let mkSK_i_up = ratchetKey(DHsharekey_0, seed_storeup) in
-        let seed_i_up = ratchetSeed(DHsharekey_0, seed_storeup) in
-        out(store_downlink_AS, (mkSK_i_up,seed_i_up))
-        )).
+    0.
 
 
 
