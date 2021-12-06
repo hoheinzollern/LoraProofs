@@ -1,0 +1,22 @@
+channel c.
+fun enc(bitstring, bitstring):bitstring.
+reduc forall m: bitstring, k:bitstring;
+    dec(enc(m,k),k) = m.
+
+fun h(bitstring,bitstring):bitstring.
+
+query attacker(new m).
+
+process
+    new k: bitstring;
+    new d: channel;
+    new d2: channel;
+    (out(d,k); out(d2,k)) |
+    (in(d, k:bitstring);
+     new m:bitstring;
+     out(c, enc(m, k));
+     out(d, h(k,m))) |
+    (in(d2, k:bitstring);
+     in(c, x:bitstring);
+     let m:bitstring = dec(x, k) in
+     out(d2, h(k,m)))
