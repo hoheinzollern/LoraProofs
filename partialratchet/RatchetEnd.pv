@@ -103,7 +103,7 @@ event gotSckAS(ratchKey).
 
 query attacker(new message_i_up).
 
-
+query attacker(new message_i).
 
 event sendmsg(bitstring).
 event rcvmsg(bitstring).
