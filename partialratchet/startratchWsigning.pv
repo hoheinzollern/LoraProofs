@@ -1,7 +1,3 @@
-set verboseClauses = short.
-
-
-free plaintext:bitstring [private].
 
 (* I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
 to not be exactly the same  *)
@@ -20,8 +16,9 @@ const emptystring : bitstring.
 const cred_AS : bitstring. (* possible point of contention *)
 const cred_ED : bitstring.
 
+const msg3Nonce : bitstring.
 
-type shareKey.
+
 
 
 (* hashinh primitive: *)
@@ -86,55 +83,83 @@ reduc forall a:bitstring, b:bitstring;
 reduc forall a:bitstring, b:bitstring;
     xorBreak(xor(a,b), a) = b.  (* for advsersary *)
 
+
+type sskey.
+type spkey.
+fun spk(sskey): spkey.
+fun sign(bitstring, sskey): bitstring.
+
+
+reduc forall m: bitstring , k : sskey; getmess ( sign(m, k ) ) = m.
+reduc forall m: bitstring, k : sskey ; checksign( sign(m, k ) , spk(k) ) = m.
+
 (*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
 
 (*TODO: increment counter nonce *)
-event debugED().
-event debugAS().
+event EDsendmessage1().
+event ASgetmessage1().
 
-event gotSckED(ratchKey).
-event gotSckAS(ratchKey).
+event ASsendmesage2().
+event EDgetmessage2().
 
- 
+event EDsendmessage3().
+event ASgetmessage3().
+
+event ASsendmesage4().
+event EDgetmessage4().
+event debug().
+
+
+query event (debug()).
+query event (EDsendmessage1()).
+
+query 
+    event (ASgetmessage1())==> event (EDsendmessage1()).
+
+
+query 
+    event (EDgetmessage2())==> event (ASsendmesage2()).
+
+
+query 
+    event (ASgetmessage3())==> event (EDsendmessage3()).
+
+
 (*)
-query k1 : ratchKey;
-    event (gotSckED(k1))==> event (gotSckAS(k1)).
-
-query k : ratchKey;
-    event (gotSckED(k)) ==> event (gotSckAS(k)).
-
-query event (debugED()).
-query event (debugAS()).
-
-*)
-query attacker(plaintext).
+query 
+    event (EDgetmessage4())==> event (ASsendmesage4()).   *)
 
 
+event sendmsg(bitstring).
+event rcvmsg(bitstring).
 
 
-
-(*)
-query msg : bitstring;
-    event (rcvmsg(msg)) ==> event (sendmsg(msg)). *)
 
 
 free c :channel.
-free secChan : channel [private].
-free discloseChan : channel.
+free downlink : channel.
+free uplink : channel.
 
+free store_uplink : channel [private].
 
-let ED(devEUI : bitstring, appEUI : bitstring) = 
+let ED(devEUI : bitstring, appEUI : bitstring, EDsecretkey : sskey, EDpubkey : spkey, ASpubeky: spkey) = 
     (* generate key pair *)
 
     new privEK_ED :exponent;
     let pubEK_ED = exp(g, privEK_ED) in
 
     (* sending message 1 *)
-    out(c, (pubEK_ED, devEUI, appEUI));
+    event EDsendmessage1();
+    let sign1 = sign((pubEK_ED, devEUI, appEUI) ,EDsecretkey) in
+    event EDgetmessage4();
+    out(c, ((pubEK_ED, devEUI, appEUI),sign1));
 
     let intermediateHash = sha256((pubEK_ED, devEUI, appEUI)) in (* calculating the hash on m1 *)
-    (* receiving message 2: *)
-    in(c, (pubEK_AS : G, =appEUI, ciphertext_2 : bitstring)); 
+    
+        (* receiving message 2: *)
+    in(c, ((pubEK_AS : G, =appEUI, ciphertext_2 : bitstring),    sign2 :bitstring)); 
+    if checksign( sign2 , ASpubeky ) = (pubEK_AS , appEUI, ciphertext_2) then
+    event EDgetmessage2();
     let PRK_2e = HKDFextract(emptyextractKey, exp(pubEK_AS, privEK_ED)) in
     let TH_2 = sha256((intermediateHash, pubEK_AS, appEUI)) in 
     let Keystream_2 = epxandKey_bitstring(HKDFexpand(PRK_2e, TH_2, emptystring)) in
@@ -144,8 +169,7 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in
     let A = (TH_2, cred_AS) in 
     if AEAD_enc(K_2m, IV_2m, emptystring, A) = MAC_2 then
-
-    (* generating message 3 *)
+        (* generating message 3 *)
 
     let TH_3 = sha256((TH_2, ciphertext_2)) in 
     let PRK_4x3m = HKDFextract(PRK_3e2m, exp(pubEK_AS, privEK_ED)) in
@@ -158,57 +182,27 @@ let ED(devEUI : bitstring, appEUI : bitstring) =
     let P_2 = (cred_ED, MAC_3) in
     let A_1 = (emptystring, TH_3) in 
     let ciphertext_3 = AEAD_enc(K_3ae, IV_3ae, P_2, A_1) in
-    out(c, ciphertext_3);
-    (*receving message 4 *)
-    in(c,ciphertext_4: bitstring);
-    let TH_4 = sha256((TH_3, ciphertext_3)) in
-    let A_1_tmp = (emptystring, TH_3) in 
-    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
-    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
-    let (=emptystring) = AEAD_dec(ciphertext_4,K_4ae, IV_4ae, A_1) in
+    let sign3 = sign(ciphertext_3 ,EDsecretkey) in
+    event EDsendmessage3();
+    out(c, (ciphertext_3, sign3));
 
-    (* receiving racthet seed: *)
-    let RCK =  epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-    (* sending racthet seed: *)
-    let SCK = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-
-    let DHsharekey_0 = exp(pubEK_AS,privEK_ED ) in (* constructing the first DH shared key from already existing DH keys *)
-
-    let mkSK_0 = ratchetKey(DHsharekey_0, SCK) in
-    let seed_0_SCK = ratchetSeed(DHsharekey_0, SCK) in
-    out(c,senc(plaintext, mkSK_0));
-    event debugED();
     0.
 
 
 
 
 
-    (* generating DH ratchet keys, and sending public key *)
-    (*
-    
-    i
-
-    
-    (*creating first encryption key (sending) 
-    let mkSK_0 = ratchet(DHsharekey_0, SCK) in
-    let seed_0_RCV = genseedFromKey(mkSK_0) in
-    in(c, messageZero: bitstring);
-    let decrypt0 = sdec(messageZero, mkSK_0) in
-    event rcvmsg(message0);
-    let mkSK_1 = ratchet(DHsharekey_0, seed_0_RCV) in 
-    *)
 
 
-
-
-
-let AS(devEUI : bitstring, appEUI : bitstring) = 
+let AS(devEUI : bitstring, appEUI : bitstring, ASsecretkey : sskey, Aspubkey : spkey, EDpubky: spkey) = 
     (* generate key pair *)
     new privEK_AS :exponent;
     let pubEK_AS = exp(g,privEK_AS) in
     (* getting message one and unpack: *)
-    in(c,m1:bitstring);
+    in(c,(m1:bitstring, sign1 :bitstring));
+    if checksign( sign1 , EDpubky ) = m1 then
+    event ASgetmessage1();
+
     let (pubEK_ED : G, =devEUI, =appEUI ) = m1 in
 
     (* generating message 2: *)
@@ -218,15 +212,19 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
     let PRK_3e2m = HKDFextract(PRK_2e,exp(pubEK_ED, privEK_AS)) in
     let  K_2m = HKDFexpand(PRK_3e2m, TH_2,K_2m_constantstring) in 
     let IV_2m = HKDFexpand(PRK_3e2m, TH_2, IV_2m_constantstring) in 
-    let A = (TH_2, cred_AS) in 
-    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A) in
+    let A_0 = (TH_2, cred_AS) in 
+    let MAC_2 = AEAD_enc(K_2m, IV_2m, emptystring, A_0) in
     let P_2 = (cred_AS, MAC_2) in
     let Keystream_2 = HKDFexpand(PRK_2e, TH_2,emptystring) in
     let ciphertext_2 = xor(P_2, epxandKey_bitstring(Keystream_2)) in
-    out(c, (pubEK_AS, appEUI, ciphertext_2)); 
+    let sign2 = sign((pubEK_AS, appEUI, ciphertext_2) ,ASsecretkey) in
+    event ASsendmesage2();
+    out(c, ((pubEK_AS, appEUI, ciphertext_2), sign2));    
 
     (* receiving message 3 *)
-    in(c, ciphertext_3 : bitstring);
+    in(c, (ciphertext_3 : bitstring, sign3:bitstring));
+    if checksign( sign3 , EDpubky ) = ciphertext_3 then
+    event ASgetmessage3();
     let TH_3 = sha256((TH_2, ciphertext_2)) in 
     let PRK_4x3m = HKDFextract(PRK_3e2m, exp(pubEK_ED, privEK_AS)) in
     let  K_3m = HKDFexpand(PRK_4x3m, TH_3,K_3m_constantstring) in 
@@ -239,46 +237,21 @@ let AS(devEUI : bitstring, appEUI : bitstring) =
 
 
 
-    (*generating message 4*)
-    let TH_4 = sha256((TH_3, ciphertext_3)) in
-    let K_4ae = HKDFexpand(PRK_4x3m,TH_4,K_4ae_constantstring) in
-    let IV_4ae = HKDFexpand(PRK_4x3m,TH_4,IV_4ae_constantstring) in
-    let A = (emptystring, TH_3) in 
-    let ciphertext_4 = AEAD_enc(K_4ae, IV_4ae, emptystring, A) in
-    out(c, ciphertext_4);
+
+    0.
 
 
-    (* receiving racthet seed: *)
-    let RCK = epxandKey_bitstring( HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring))in
-    (* sending racthet seed: *)
-    let SCK = epxandKey_bitstring(HKDFexpand(PRK_4x3m, TH_4, RCK_constantstring)) in
-    (* receving public DH ratchet public key, gener ating DH ratchet keys *)
-
-    let DHsharekey_0 = exp(pubEK_ED,privEK_AS ) in (* constructing the first DH shared key from already existing DH keys *)
-
-    let mkSK_0_SCK = ratchetKey(DHsharekey_0, SCK) in
-    let seed_0_SCK = ratchetSeed(DHsharekey_0, SCK) in
-
-    let mkSK_0_RCV = ratchetKey(DHsharekey_0, RCK) in
-    let seed_0_RCV = ratchetSeed(DHsharekey_0, RCK) in
-    in(c, encryptedPlaintext : bitstring);
-    new badKey : ratchKey;
-    let (=plaintext) = sdec(encryptedPlaintext,mkSK_0_RCV) in
-    event debugAS();
 
 
-    let mkSK_1_SCK = ratchetKey(DHsharekey_0, seed_0_RCV) in
-    event debugAS();
 
-
-    0.    
-
-
-free n:bitstring [private].
 
 
 
 process
+    new ASsecretsignkey : sskey;
+    let ASpublicsignkey = spk(ASsecretsignkey) in 
+    new EDsecretsignkey : sskey;
+    let EDpublicsignkey = spk(EDsecretsignkey) in 
     new devEUI :bitstring;
     new appEUI :bitstring;
-    ((ED(devEUI, appEUI)) | (AS(devEUI, appEUI)))
+    ((ED(devEUI, appEUI,EDsecretsignkey, EDpublicsignkey,ASpublicsignkey)) | (AS(devEUI, appEUI,ASsecretsignkey,ASpublicsignkey,EDpublicsignkey )))

@@ -1,0 +1,239 @@
+
+(*
+This file is meant to only test the final ratcheting of loraratchet
+
+
+ I start by defining some constants that I suspect might by of significance, or maybe I just use them for certain values
+to not be exactly the same  *)
+const K_2m_constantstring : bitstring.
+const IV_2m_constantstring : bitstring.
+const K_3m_constantstring : bitstring.
+const IV_3m_constantstring : bitstring.
+const K_3ae_constantstring : bitstring.
+const IV_3ae_constantstring : bitstring.
+const K_4ae_constantstring : bitstring.
+const IV_4ae_constantstring : bitstring.
+const SCK_constantstring : bitstring.
+const RCK_constantstring : bitstring.
+const emptystring : bitstring.
+
+const cred_AS : bitstring. (* possible point of contention *)
+const cred_ED : bitstring.
+
+
+
+
+(* hashinh primitive: *)
+
+fun sha256(bitstring): bitstring.
+
+(* key derivation functions *)
+type extractkey.
+type expandkey.
+const emptyexpandKey : expandkey.
+const emptyextractKey : extractkey.
+
+
+(* diffie hellman ratchet shceme *)
+
+type G. (*group elements *)
+const g: G [data].
+type exponent. (*exponent used for creating pk from secret key *)
+fun exp(G,exponent): G.
+equation forall x:exponent, y:exponent; exp(exp(g,x),y) = exp(exp(g,y), x).
+
+
+
+
+
+(* key ratchet shceme, including encryption and decryption *)
+type ratchKey.
+fun ratchetKey(G, bitstring): ratchKey. (* grrrr why won't you return two things????! *)
+fun ratchetSeed(G,bitstring):bitstring.
+fun senc ( bitstring , ratchKey ) : bitstring.
+reduc forall m: bitstring , k : ratchKey ; sdec(senc(m, k) , k ) = m.
+
+(* extract functions: *)
+
+
+
+fun HKDFextract(extractkey, G) : extractkey.
+
+
+fun HKDFexpand(extractkey,  bitstring, bitstring) : expandkey. (*input: expandkey, hash, constant string *)
+
+(* authenticated encryption *)
+
+(* argument of the form: Key, IV , plaintext, associated auth data *)
+fun AEAD_enc(expandkey,expandkey, bitstring, bitstring) : bitstring.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring;
+    AEAD_dec(AEAD_enc(k,IV,p,AD), k, IV, AD) = p.
+
+reduc forall k:expandkey, IV:expandkey, p:bitstring, AD:bitstring; (* for the case that an empty string is used for plaintext *)
+    AEAD_dec_unsafe(AEAD_enc(k,IV,p,AD), k, IV) = p.
+
+fun epxandKey_bitstring(expandkey) : bitstring [typeConverter].
+
+(* XOR *)
+
+
+fun xor(bitstring,bitstring): bitstring.
+
+reduc forall a:bitstring, b:bitstring;
+    xordecrypt(xor(a,b), b) = a. (* for advsersary *)
+reduc forall a:bitstring, b:bitstring;
+    xorBreak(xor(a,b), a) = b.  (* for advsersary *)
+
+(*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
+
+(*TODO: increment counter nonce *)
+event debugED().
+event debugAS().
+
+event EDreceive(bitstring).
+event EDsend(bitstring).
+event ASreceive(bitstring).
+event ASsend(bitstring).
+
+event gotSckED(ratchKey).
+event gotSckAS(ratchKey).
+
+ 
+
+query attacker(new message_i_up).
+
+
+
+event sendmsg(bitstring).
+event rcvmsg(bitstring).
+
+
+
+
+free c :channel.
+free downlink : channel.
+free uplink : channel.
+
+free store_uplink : channel [private].
+
+
+
+let ED(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHsharekey_0:G) = 
+    (* generate key pair *)
+
+    (* downlink keys*)
+    let mkSK_0_down = ratchetKey(DHsharekey_0, downlinkRatchet_Seed0) in
+    let seed_0_down = ratchetSeed(DHsharekey_0, downlinkRatchet_Seed0) in
+    (* uplink keys*)
+
+    let mkSK_0_up = ratchetKey(DHsharekey_0, uplinkRatchet_Seed0) in
+    let seed_0_up = ratchetSeed(DHsharekey_0, uplinkRatchet_Seed0) in
+    new message_0: bitstring;
+    let c_1_uplink = senc(message_0, mkSK_0_down) in
+    new store_downlink_ED : channel;
+    new store_uplink_ED : channel;
+
+    out(store_uplink_ED, (mkSK_0_up,seed_0_up));
+    out(store_downlink_ED, (mkSK_0_down, seed_0_down)); (* simply doing this for being able to get the things sent out again *)
+
+
+    (out(uplink, c_1_uplink) |
+     (
+        in(store_downlink_ED,  (sharekey_in_down :ratchKey, seed_in_down:bitstring)) [precise];
+        in(downlink, c_1_down:bitstring) [precise];
+        let message_0_down = sdec(c_1_down,sharekey_in_down) in
+        event EDreceive(message_0_down);
+        let mkSK_i_down = ratchetKey(DHsharekey_0, seed_in_down) in
+        let seed_i_down = ratchetSeed(DHsharekey_0, seed_in_down) in
+        out(store_downlink_ED, (mkSK_i_down, seed_i_down));
+
+
+        in(store_uplink_ED, (mkSK_in_up:ratchKey, seed_in_up:bitstring)) [precise];
+
+        let mkSK_i_up = ratchetKey(DHsharekey_0, seed_in_up) in
+        let seed_i_up = ratchetSeed(DHsharekey_0, seed_in_up) in
+        new message_i_up : bitstring;
+        event EDsend(message_i_up);
+        out(store_downlink_ED, (mkSK_i_up, seed_0_up));
+        out(uplink, senc(message_i_up,mkSK_i_up)))).
+
+
+
+
+
+
+let AS(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHsharekey_0:G) = 
+
+ 
+
+    let mkSK_0_down = ratchetKey(DHsharekey_0, downlinkRatchet_Seed0) in
+    let seed_0_down = ratchetSeed(DHsharekey_0, downlinkRatchet_Seed0) in
+    let mkSK_0_up = ratchetKey(DHsharekey_0, uplinkRatchet_Seed0) in
+    let seed_0_up = ratchetSeed(DHsharekey_0, uplinkRatchet_Seed0) in
+    new message_0 : bitstring;
+    let c_1 = senc(message_0, mkSK_0_down) in
+
+    new store_downlink_AS : channel;
+    new store_uplink_AS : channel;
+
+    out(store_downlink_AS, (mkSK_0_down, seed_0_down)); (* simply doing this for being able to get the things sent out again *)
+    out(store_uplink_AS, (mkSK_0_up, seed_0_up));
+
+
+    (out(downlink, c_1) |
+     (
+        in(store_downlink_AS,( mkSK_i_storedown: ratchKey, seed_storedown :bitstring)) [precise];
+
+        (* ratchet *)
+        let mkSK_i_down = ratchetKey(DHsharekey_0, seed_storedown) in
+        let seed_i_SCKdown = ratchetSeed(DHsharekey_0, seed_storedown) in
+        new message_i : bitstring;
+        event ASsend(message_i);
+        (*send next message and send to own channel  *)
+        out(downlink, (mkSK_i_down, senc(message_i, mkSK_i_down)));
+        out(store_downlink_AS, (mkSK_i_down, seed_i_SCKdown));
+        
+        in(uplink, C_i_up:bitstring);
+        in(store_uplink_AS, (mkSK_i_storeup: ratchKey, seed_storeup:bitstring));
+        let message_i_up = sdec(C_i_up,mkSK_i_storeup) in
+        event ASreceive(message_i_up);
+
+        let mkSK_i_up = ratchetKey(DHsharekey_0, seed_storeup) in
+        let seed_i_up = ratchetSeed(DHsharekey_0, seed_storeup) in
+        out(store_downlink_AS, (mkSK_i_up,seed_i_up))
+        )).
+
+
+
+(*
+
+What we need to run final ratcheting step
+
+
+*)
+
+process
+        (* generate key pair *)
+    new privEK_AS :exponent;
+    let pubEK_AS = exp(g,privEK_AS) in
+    (* generate key pair ED *)
+    new privEK_ED :exponent;
+    let pubEK_ED = exp(g,privEK_AS) in
+
+    new downlinkRatchet_SeedAS : bitstring;
+    new downlinkRatchet_SeedED : bitstring;
+    new uplinkRatchet_SeedAS : bitstring;
+    new uplinkRatchet_SeedED : bitstring;
+    let DHsharekey_AS = exp(pubEK_ED,privEK_AS) in
+    let DHsharekey_ED = exp( pubEK_AS,privEK_ED) in
+
+
+    new devEUI :bitstring;
+    new appEUI :bitstring;
+
+
+
+    let DHsharekey_ED = exp(pubEK_AS,privEK_ED ) in
+    let DHsharekey_AS = exp(pubEK_ED,privEK_AS ) in  
+    ((ED(downlinkRatchet_SeedED, uplinkRatchet_SeedED, DHsharekey_ED )) | (AS(downlinkRatchet_SeedAS, uplinkRatchet_SeedAS,DHsharekey_AS )))
