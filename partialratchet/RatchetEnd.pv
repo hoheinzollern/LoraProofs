@@ -87,26 +87,12 @@ reduc forall a:bitstring, b:bitstring;
 
 (*))AppKey :key, NwkKey :key, JoinEUI :bitstring,DevEUI :bitstring, DevNonce : bitstring) = *)
 
-(*TODO: increment counter nonce *)
-event debugED().
-event debugAS().
-
-event EDreceive(bitstring).
-event EDsend(bitstring).
-event ASreceive(bitstring).
-event ASsend(bitstring).
-
-event gotSckED(ratchKey).
-event gotSckAS(ratchKey).
-
  
 
 query attacker(new message_i_up).
 
 query attacker(new message_i).
 
-event sendmsg(bitstring).
-event rcvmsg(bitstring).
 
 
 
@@ -139,11 +125,10 @@ let ED(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHshar
 
 
     (out(uplink, c_1_uplink) |
-     (
+     (!
         in(store_downlink_ED,  (sharekey_in_down :ratchKey, seed_in_down:bitstring)) [precise];
         in(downlink, c_1_down:bitstring) [precise];
         let message_0_down = sdec(c_1_down,sharekey_in_down) in
-        event EDreceive(message_0_down);
         let mkSK_i_down = ratchetKey(DHsharekey_0, seed_in_down) in
         let seed_i_down = ratchetSeed(DHsharekey_0, seed_in_down) in
         out(store_downlink_ED, (mkSK_i_down, seed_i_down));
@@ -154,7 +139,6 @@ let ED(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHshar
         let mkSK_i_up = ratchetKey(DHsharekey_0, seed_in_up) in
         let seed_i_up = ratchetSeed(DHsharekey_0, seed_in_up) in
         new message_i_up : bitstring;
-        event EDsend(message_i_up);
         out(store_downlink_ED, (mkSK_i_up, seed_0_up));
         out(uplink, senc(message_i_up,mkSK_i_up)))).
 
@@ -182,22 +166,20 @@ let AS(downlinkRatchet_Seed0 : bitstring, uplinkRatchet_Seed0 :bitstring, DHshar
 
 
     (out(downlink, c_1) |
-     (
+     (!
         in(store_downlink_AS,( mkSK_i_storedown: ratchKey, seed_storedown :bitstring)) [precise];
 
         (* ratchet *)
         let mkSK_i_down = ratchetKey(DHsharekey_0, seed_storedown) in
         let seed_i_SCKdown = ratchetSeed(DHsharekey_0, seed_storedown) in
         new message_i : bitstring;
-        event ASsend(message_i);
         (*send next message and send to own channel  *)
-        out(downlink, (mkSK_i_down, senc(message_i, mkSK_i_down)));
+        out(downlink, (senc(message_i, mkSK_i_down)));
         out(store_downlink_AS, (mkSK_i_down, seed_i_SCKdown));
         
         in(uplink, C_i_up:bitstring);
         in(store_uplink_AS, (mkSK_i_storeup: ratchKey, seed_storeup:bitstring));
         let message_i_up = sdec(C_i_up,mkSK_i_storeup) in
-        event ASreceive(message_i_up);
 
         let mkSK_i_up = ratchetKey(DHsharekey_0, seed_storeup) in
         let seed_i_up = ratchetSeed(DHsharekey_0, seed_storeup) in
@@ -219,7 +201,7 @@ process
     let pubEK_AS = exp(g,privEK_AS) in
     (* generate key pair ED *)
     new privEK_ED :exponent;
-    let pubEK_ED = exp(g,privEK_AS) in
+    let pubEK_ED = exp(g,privEK_ED) in
 
     new downlinkRatchet_SeedAS : bitstring;
     new downlinkRatchet_SeedED : bitstring;
